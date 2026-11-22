@@ -52,11 +52,15 @@
 
 ## 5. Style 與註解
 
+- 預設不新增自訂 class。優先用元件屬性或適用的既有樣式，不用 inline style 規避限制。若設計需求確實無法滿足，新增的自訂 class（含 `:class` 與表格 callback 回傳值）一律用小駝峰，如 `resultViewport`，並限制於 scoped style。保留既有及框架 class 原名。交付前逐一核對新增 class 的必要性與命名。
+
 - 先用 Element 元件的 `size`、`type`、`gutter`、`span`、`align` 類排版能力。單點寬度、邊距、對齊可用 inline style（如 `style="text-align: right"`）。重複或多層樣式留在該元件的 `<style lang="scss" scoped>`；簡單連結外觀用 `<style scoped>` 即可，不需樣式就省略。不要為還原單頁改全域樣式。
 - 搜尋區 `.custInput` 用於收緊表單間距；作業站 `.wrapper`、`.scroll` 處理容器與捲動；報表的可點數量以粗體、藍色、底線辨識。動態表格狀態用 `statusCellStyle` 等 callback；不要把個別頁的固定高度、負 margin 或 `!important` 當成全站預設。
 - Template 在區塊或意義不明的欄位前加短註解，如 `<!-- 搜尋欄位 -->`、`<!-- 主表格 -->`、`<!-- Reason Type -->`。JS 用 `//`：可用 `// API`、`// TOOL` 分組，例外流程註明原因（如 `// 複製時清空handle`）。`init.js` 中語系鍵不直觀時，欄位行末補 `// 扭力` 等業務名稱。API 函式前用一行中文說明動作，必要時附英文術語；不逐行翻譯程式。
 
 ## 6. API 檔案的邊界與命名
+
+**強制版型**：除了 `@/router/axios` 的 `request` 與必要時從 `@/api/prefix` 匯入的服務前綴，不得引用任何其他程式。檔案只放這些 import、註解與各 endpoint 的具名函式；每個函式只有一行為：直接 `return request({...})`。不得新增 helper、驗證、條件分支、資料轉換、快取或錯誤處理。缺 URL 的函式仍遵照同一版型，頁面暫不匯入或呼叫，包含自動載入流程。
 
 - **未提供 API URL 時仍建立 API 檔與函式骨架**。依已知操作建立對應的 named export，保留 request 設定；每個缺 URL 的函式在設定中寫 `url: '', // IAN TO DO`。不要猜路由、套用樣本 URL 或用服務前綴包空字串。URL 補齊前不對空路徑發送請求；HTTP method 與參數位置也只採用已確認的契約。
 

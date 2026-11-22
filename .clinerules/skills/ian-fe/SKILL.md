@@ -5,13 +5,20 @@ description: Generate or modify Ian-style iMES Vue 2 and Element UI pages from d
 
 # Ian frontend development
 
-**Version: 1.0.0**
+**Version: 1.1.0**
 
 **Author: Ian Wu**
 
 For internal use only by FOREVERWIN INFORMATION TECHNOLOGY CO., LTD. To report an issue, email <wuguanru@semi-tech.com>.
 
 Use the rules below as the implementation brief. Work in the user's target project. Do not introduce a new UI framework or copy example modules into the output. Communicate plans, issues, and delivery in Traditional Chinese unless the user requests another language.
+
+## Write scope: applies to every step and every agent
+
+- Before writing, record the workspace baseline (staged, unstaged and untracked changes). In the plan, list the exact paths to create or edit. By default, only the requested page module's needed files and its dedicated API file are eligible. Honor any narrower user limit. A plan or delegation cannot grant permission beyond the user's scope.
+- Everything else is read-only unless the user explicitly authorizes a specific expansion. This includes the shared Axios wrapper and interceptors, shared components, other business modules, global routes, permissions, i18n, styles, dependencies and build configuration. Importing or inspecting a file is not permission to change it. For a missing URL, leave the operation unwired in the view; do not change Axios.
+- Give each worker only its assigned subset of the allowlist, including on repair. Apply the boundary to creates, edits, deletions and renames, including indirect writes from generators, formatters and `lint --fix`. Use non-writing checks when a command's changes cannot be confined.
+- If a fix needs an out-of-scope change, leave that file untouched, finish independent in-scope work and report the blocked behavior, file and reason. Only explicit user authorization can expand the list. Do not duplicate shared infrastructure inside the module to bypass this rule.
 
 ## Execution workflow
 
@@ -40,6 +47,58 @@ Use English kebab-case for module directories, business component files and API 
 - Use small primary add buttons and mini circular row-action buttons when applicable. For edit dialogs use the existing draggable dialog directive, footer buttons and protection against accidental backdrop/Escape dismissal.
 - Prefer component props over custom CSS. A single local alignment/spacing may be inline; repeated or nested styling belongs in `<style scoped>` or `<style lang="scss" scoped>`. Use table style callbacks for dynamic status. Preserve visible link affordance for report drill-downs. Do not globalize a page-specific height, negative margin or `!important`.
 
+## Custom classes and sanitized template patterns
+
+Start with no new CSS class. Prefer Element UI layout props and verified existing styles. Do not invent wrappers or switch to inline CSS merely to avoid this rule. Preserve existing project and framework class names (e.g. `el-icon-search`); do not rename them to fit a local convention. A `div` needed as a Vue 2 root does not by itself need a class.
+
+Only introduce a local class for a specific visual or interaction requirement that those options cannot meet. Name every new custom class **lowerCamelCase** (e.g. `resultViewport`, not `result-viewport`, `ResultViewport` or `result_viewport`), including tokens supplied through `:class` or table class callbacks. Keep its rule scoped to the component.
+
+The following fragments illustrate boundaries, not mandatory markup or complete pages. Bind only fields, actions, labels and component interfaces confirmed for the target. Do not add sample features just because they appear here.
+
+**Master data — search emits intent; the parent owns the query and edit dialog.** Inside the search form, right-align an action with the grid. Do not create a `searchActions` wrapper and a flex rule to achieve the same thing.
+
+```vue
+<el-row type="flex" justify="end">
+  <el-button
+    type="primary"
+    size="small"
+    @click="$emit('search')">
+    {{ searchLabel }}
+  </el-button>
+</el-row>
+```
+
+**Report — a detail cell selects the parent row; a read-only dialog receives it.** In the table column's slot, use an existing text action rather than styling an ordinary cell as a link. On open, the detail component loads its own records.
+
+```vue
+<template v-slot="scope">
+  <el-button type="text" @click="showDialog(scope.row)">
+    {{ scope.row[col.prop] }}
+  </el-button>
+</template>
+```
+
+```vue
+<DetailDialog
+  :visible.sync="detailVisible"
+  :modal-obj="currentRow" />
+```
+
+**Workstation — keep scan input and feedback together.** Enter triggers the page's scan handler, not form submission. Substitute a verified target-project feedback component if one fits. Do not introduce polling or device integration unless required.
+
+```vue
+<el-row :gutter="15">
+  <el-col :span="8">
+    <el-input
+      ref="scanInput"
+      v-model="input"
+      :disabled="isLoading"
+      @keyup.enter.native="handleScan" />
+  </el-col>
+  <el-col :span="16">{{ message }}</el-col>
+</el-row>
+```
+
 ## Naming and comments
 
 - Use camelCase. UI events: `handleSearch`, `handleSave`, `handleDel`, `handleSelectionChange`; use `handleClick(type, row)` when actions open the same dialog in different modes. Page-level `getList()` builds a payload, calls API `fetchList(payload)` and updates the list. Use `getCurrent(row)` for details or meaningful workstation verbs such as `loadTask`.
@@ -55,32 +114,32 @@ Use English kebab-case for module directories, business component files and API 
 
 ## API modules
 
-- Keep transport separate. Import the target project's `request` from `@/router/axios` and the confirmed service prefix from `@/api/prefix` for known routes. Use named exported functions returning the request promise. Keep loading, messages, state resets and rendering in the view. Import using the target project's actual API path; do not derive the filename or service prefix mechanically from the view name.
+- **Mandatory API file template:** allow only `import request from '@/router/axios'`, an optional named import of the required service prefix from `@/api/prefix`, comments, and one named `export function` per endpoint. No other imports, re-exports, constants, helpers or executable module-level code. Each function body must consist of exactly one `return request({ ... })` with an inline object literal: `url`, confirmed `method`, and `params` or `data` as required by the contract. No guards, validation, transforms, retries, caching, mocks, `async/await`, promise handlers or UI logic. Build payloads and handle responses in the caller. Use the actual API filename and prefix, not ones inferred from the view name.
 - CRUD names: `fetchList(params)`, `getById(params)`, `saveObj(data)`, `delObj(handle)`. Typical contracts use GET with `params`, POST with `data`, DELETE with `params: {handle}`. Reports often use `rpt`, `fetchList(query)`, `getMaterialReceipt(query)` or `moFetch(query)`; master data/workstations often use `iep`. Domain actions may use `link`, `unlink`, `startScrewTask`. Determine HTTP method and parameter placement from the contract, not the verb in the function name.
 - Construct `payload` in the caller. A paged response commonly exposes `records` and `total` under `res.data.data`; read single-record and task responses by their own schema. Do not assume a label is a server field or invent response data.
-- **URL missing:** still create the API file and named function for each known operation. Keep the URL literally empty and mark it `url: '', // IAN TO DO`. Do not wrap an empty string in a prefix, guess a route, or report fake success. Guard the request inside the function so even automatic page loads cannot send an empty URL. Example for a confirmed GET query whose route alone is pending:
+- **URL missing:** create the named function in the same template with `url: '', // IAN TO DO`. Do not wrap the empty URL in a prefix. Do not import or call the pending function in the view until configured; omit automatic loads and keep manual actions disabled or marked pending. Example for a confirmed GET query whose route alone is pending:
 
 ```js
 import request from '@/router/axios'
 
 // 查詢清單
 export function fetchList(params) {
-  const config = {
+  return request({
     url: '', // IAN TO DO
     method: 'get',
     params
-  }
-  if (!config.url) return Promise.reject(new Error('查詢 API 尚未設定'))
-  return request(config)
+  })
 }
 ```
 
-Surface the pending state in the caller without a network request. If method or parameter placement is also unknown, leave the operation guarded until the contract is supplied; do not copy GET from the example as a default.
+If method or parameter placement is unknown, omit the unknown fields and leave the operation unwired; do not copy GET from the example as a default.
 
 ## Verification checklist for step 5
 
+- Inspect every added `class`, `:class`, class callback and CSS selector. For each new custom class, identify the requirement and why existing layout props/styles do not suffice; remove it if unnecessary. Check lowerCamelCase for each new custom token, not framework or pre-existing names.
+- Compare actual changes (including staged, unstaged, untracked, deleted and renamed paths) against the baseline and write allowlist. Review diffs for files that were already dirty. Never reset, clean or revert someone else's changes. Report unexpected changes; do not mark a scope violation as passed or widen the list to make a repair pass.
 - Compare visible controls, labels, ordering and actions to the design; check grid layout, component reuse, naming, comments, styles and file boundaries. No unrequested business actions.
 - Resolve imports; trace `init.js` keys → model/column props → payload. Match child props and emitted events to parent listeners. Check a drill-down uses the clicked row and correct detail function.
 - Exercise applicable paths: search resets page; view cannot write; copy cannot overwrite the source; cancel sends nothing; save failure preserves input and releases loading; reopen does not retain stale data; repeated scans cannot double-submit; leaving the page stops listeners/polling.
-- For every missing endpoint verify the export exists, the literal URL/comment is present and request is unreachable until configured. Keep it on the pending list.
+- Reject an API file with an unapproved import, extra declaration or any function body other than a single direct request return. For each missing endpoint verify its URL/comment and check that no caller invokes it (including lifecycle hooks and watchers). Keep it on the pending list.
 - Use available target-project lint/build/tests and UI checks. Distinguish observed results from static inspection and unavailable tests in delivery.
