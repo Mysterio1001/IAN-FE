@@ -5,13 +5,22 @@ description: Generate or modify Ian-style iMES Vue 2 and Element UI pages from d
 
 # Ian frontend development
 
-**Version: 1.1.0**
+**Version: 1.2.0**
 
 **Author: Ian Wu**
 
 For internal use only by FOREVERWIN INFORMATION TECHNOLOGY CO., LTD. To report an issue, email <wuguanru@semi-tech.com>.
 
 Use the rules below as the implementation brief. Work in the user's target project. Do not introduce a new UI framework or copy example modules into the output. Communicate plans, issues, and delivery in Traditional Chinese unless the user requests another language.
+
+## Entry: route by the requested outcome
+
+Choose one path from the user's request. Editing an existing page does not automatically mean a minor adjustment; file count alone does not determine the path.
+
+- **微調 (minor adjustment):** A bounded change to existing behavior or presentation, e.g. move a permission condition onto its button or adjust one search label. Note the target paths in one sentence, inspect the affected code and its direct dependencies, then make the smallest change. Work locally without delegation or the six-step workflow. Review the diff against the baseline, check the affected interaction and report the result. Skip unrelated templates and page-wide checks.
+- **新建或編輯完整頁面 (full page):** A new page, a page-wide redesign, or a change that requires coordinating a new flow across search, table, dialog and/or API contracts. Follow the full workflow below, even on an existing page. If inspection shows a minor request needs this coordination, switch paths and explain why; switching never expands write permission.
+
+Both paths must follow the write scope and all template, component and API rules applicable to the change. If the intended outcome is unclear and the choice would materially change the work, ask one focused question; otherwise proceed without asking the user to select a mode.
 
 ## Write scope: applies to every step and every agent
 
@@ -20,7 +29,7 @@ Use the rules below as the implementation brief. Work in the user's target proje
 - Give each worker only its assigned subset of the allowlist, including on repair. Apply the boundary to creates, edits, deletions and renames, including indirect writes from generators, formatters and `lint --fix`. Use non-writing checks when a command's changes cannot be confined.
 - If a fix needs an out-of-scope change, leave that file untouched, finish independent in-scope work and report the blocked behavior, file and reason. Only explicit user authorization can expand the list. Do not duplicate shared infrastructure inside the module to bypass this rule.
 
-## Execution workflow
+## Full-page execution workflow
 
 1. **Receive requirements.** Identify the target page, new vs. existing behavior, and the requested controls, actions, dialogs and API contracts. For each action trace input → local guard → request, if any → success and failure UI. Do not infer editability, permissions, persistence or payload keys from a screenshot alone.
 2. **Read rules.** Apply the implementation rules below. For an edit, inspect the actual page and its imports first. If an interface or convention needs evidence, inspect a behaviorally similar module in the target project. Check `src/components` for suitable controls; verify props, events, slots, registration and actual usage before reuse. Do not invent import paths if source is unavailable.
@@ -55,18 +64,72 @@ Only introduce a local class for a specific visual or interaction requirement th
 
 The following fragments illustrate boundaries, not mandatory markup or complete pages. Bind only fields, actions, labels and component interfaces confirmed for the target. Do not add sample features just because they appear here.
 
-**Master data — search emits intent; the parent owns the query and edit dialog.** Inside the search form, right-align an action with the grid. Do not create a `searchActions` wrapper and a flex rule to achieve the same thing.
+**Component templates are allowlists.** For each component use only the parameters shown in its applicable template. Omit unused ones; do not add props, pass-through attributes, listeners or slots merely because a library supports them. If a requirement needs an interface not in the template, report the mismatch rather than extending it silently. In every Vue SFC script, only imports may precede `export default`; no functions, variables, constants or other declarations outside it. This does not change the named-export formats for `init.js` and API files.
+
+**`init.js` — matched search, form and column keys.** Keep only definitions used by the page. The parent initializes `searchForm` with `copyJSON(initSearch)` and passes it to the search component.
+
+```js
+export const initSearch = { code: '' }
+export const initForm = { code: '', description: '' }
+export const tableOptions = [
+  { prop: 'code', label: '代碼', minWidth: '120' },
+  { prop: 'description', label: '說明', minWidth: '150' }
+]
+```
+
+**`ui/search-ui.vue` — search emits intent; the parent owns query and reset.** When lookups are needed, put all `input-select-dialog` instances first, as the first children of the template root, before forms, containers or other content. Omit pickers for ordinary text inputs.
 
 ```vue
-<el-row type="flex" justify="end">
-  <el-button
-    type="primary"
-    size="small"
-    @click="$emit('search')">
-    {{ searchLabel }}
-  </el-button>
-</el-row>
+<template>
+  <div>
+    <el-form ref="searchForm" :model="searchForm" @submit.native.prevent>
+      <el-row :gutter="15">
+        <el-col :span="8">
+          <el-form-item prop="code">
+            <span slot="label">代碼</span>
+            <el-input v-model="searchForm.code" clearable />
+          </el-form-item>
+        </el-col>
+        <el-col :span="8" style="text-align: right">
+          <el-button type="primary" size="small" icon="el-icon-search" @click="$emit('search')">查詢</el-button>
+          <el-button size="small" icon="el-icon-delete" @click="$emit('clear')">清除</el-button>
+        </el-col>
+      </el-row>
+    </el-form>
+  </div>
+</template>
+
+<script>
+export default {
+  props: {
+    searchForm: { type: Object, default: () => ({}) }
+  }
+}
+</script>
 ```
+
+**CRUD actions — include only requested operations.** The add button goes above the table; the other four belong in its action column. Bind each required `v-if` directly on its `el-button`, never on the enclosing grid, column or slot. `canAdd`, `canEdit` and `canDelete` below represent confirmed permission predicates, not new permission keys. Apply the same placement to view or copy if their actual permissions differ.
+
+```vue
+<el-button v-if="canAdd" type="primary" size="small" icon="el-icon-plus" @click="handleClick('new')">新增</el-button>
+```
+
+```vue
+<el-table-column label="操作">
+  <template v-slot="scope">
+    <!-- 查看 -->
+    <el-button type="warning" size="mini" icon="el-icon-view" circle @click="handleClick('view', scope.row)" />
+    <!-- 修改 -->
+    <el-button v-if="canEdit" type="primary" size="mini" icon="el-icon-edit" circle @click="handleClick('edit', scope.row)" />
+    <!-- 複製 -->
+    <el-button v-if="canAdd" type="success" size="mini" icon="el-icon-document-copy" circle @click="handleClick('copy', scope.row)" />
+    <!-- 刪除 -->
+    <el-button v-if="canDelete" type="danger" size="mini" icon="el-icon-delete" circle @click="handleDel(scope.row)" />
+  </template>
+</el-table-column>
+```
+
+**Single business dialog in `index.vue`:** use the direct `main` component name (`<main/>` shorthand), not a business-specific alias. Preserve the bindings needed by `dialog/main.vue` (`:visible.sync`, `:model`, `:type`, `@afterSave`). Check component resolution: lowercase `main` is a native HTML element in standard Vue 2; if so, import and register `Main` and write `<Main ... />` in the SFC so the dialog actually mounts. Only distinguish dialogs with descriptive aliases when there are two or more.
 
 **Report — a detail cell selects the parent row; a read-only dialog receives it.** In the table column's slot, use an existing text action rather than styling an ordinary cell as a link. On open, the detail component loads its own records.
 
@@ -117,7 +180,8 @@ The following fragments illustrate boundaries, not mandatory markup or complete 
 - **Mandatory API file template:** allow only `import request from '@/router/axios'`, an optional named import of the required service prefix from `@/api/prefix`, comments, and one named `export function` per endpoint. No other imports, re-exports, constants, helpers or executable module-level code. Each function body must consist of exactly one `return request({ ... })` with an inline object literal: `url`, confirmed `method`, and `params` or `data` as required by the contract. No guards, validation, transforms, retries, caching, mocks, `async/await`, promise handlers or UI logic. Build payloads and handle responses in the caller. Use the actual API filename and prefix, not ones inferred from the view name.
 - CRUD names: `fetchList(params)`, `getById(params)`, `saveObj(data)`, `delObj(handle)`. Typical contracts use GET with `params`, POST with `data`, DELETE with `params: {handle}`. Reports often use `rpt`, `fetchList(query)`, `getMaterialReceipt(query)` or `moFetch(query)`; master data/workstations often use `iep`. Domain actions may use `link`, `unlink`, `startScrewTask`. Determine HTTP method and parameter placement from the contract, not the verb in the function name.
 - Construct `payload` in the caller. A paged response commonly exposes `records` and `total` under `res.data.data`; read single-record and task responses by their own schema. Do not assume a label is a server field or invent response data.
-- **URL missing:** create the named function in the same template with `url: '', // IAN TO DO`. Do not wrap the empty URL in a prefix. Do not import or call the pending function in the view until configured; omit automatic loads and keep manual actions disabled or marked pending. Example for a confirmed GET query whose route alone is pending:
+- Preserve existing API filenames, paths, export names and call signatures, including legacy casing; naming conventions apply to new modules only. Do not rename or rewrite unrelated endpoints. All new or changed endpoint implementations must use the mandatory template above; legacy names are not permission for alternate implementation styles.
+- **URL missing:** create the named function in the same template with `url: '', // IAN TO DO`. Do not wrap the empty URL in a prefix. Do not import or call the pending function until configured. Skip automatic loads; for a manual action stop in its page method with `return // IAN TO DO：待 API URL 確認後串接` before loading, confirmation or success effects. Do not add `el-alert`, toast, disabled state or other UI solely for a missing URL. Example for a confirmed GET query whose route alone is pending:
 
 ```js
 import request from '@/router/axios'
@@ -134,7 +198,7 @@ export function fetchList(params) {
 
 If method or parameter placement is unknown, omit the unknown fields and leave the operation unwired; do not copy GET from the example as a default.
 
-## Verification checklist for step 5
+## Full-page verification checklist for step 5
 
 - Inspect every added `class`, `:class`, class callback and CSS selector. For each new custom class, identify the requirement and why existing layout props/styles do not suffice; remove it if unnecessary. Check lowerCamelCase for each new custom token, not framework or pre-existing names.
 - Compare actual changes (including staged, unstaged, untracked, deleted and renamed paths) against the baseline and write allowlist. Review diffs for files that were already dirty. Never reset, clean or revert someone else's changes. Report unexpected changes; do not mark a scope violation as passed or widen the list to make a repair pass.
