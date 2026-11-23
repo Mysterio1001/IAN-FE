@@ -5,7 +5,7 @@ description: Generate or modify Ian-style iMES Vue 2 and Element UI pages from d
 
 # Ian frontend development
 
-**Version: 1.2.0**
+**Version: 1.2.1**
 
 **Author: Ian Wu**
 
@@ -21,6 +21,10 @@ Choose one path from the user's request. Editing an existing page does not autom
 - **新建或編輯完整頁面 (full page):** A new page, a page-wide redesign, or a change that requires coordinating a new flow across search, table, dialog and/or API contracts. Follow the full workflow below, even on an existing page. If inspection shows a minor request needs this coordination, switch paths and explain why; switching never expands write permission.
 
 Both paths must follow the write scope and all template, component and API rules applicable to the change. If the intended outcome is unclear and the choice would materially change the work, ask one focused question; otherwise proceed without asking the user to select a mode.
+
+**Core rule for both paths: default to no new boolean flag.** Use the existing source of truth: if `type` already selects `new`, `edit`, `copy` or `view`, check `type === 'view'` rather than maintaining `isView`, `isEdit`, etc. Use a simple condition directly; a read-only `computed` predicate is useful for repeated or complex logic, not as a new alias for every comparison. Never use watchers to synchronize a redundant flag.
+
+Keep a mutable flag only for a concrete independent state (e.g. a dialog that can open and close within the same mode, or an in-flight request), or when required by the permission/component template. Do not add aliases for those flags or merge unrelated states just to reduce their count. When reviewing a new flag, ask: what can change it independently, or which contract requires it? If neither applies, remove the flag, not the behavior.
 
 ## Write scope: applies to every step and every agent
 
@@ -47,6 +51,8 @@ Use English kebab-case for module directories, business component files and API 
 - **Workstation:** Keep scanning, focus, row selection, messages, signals and task progression coordinated by the page. Reuse existing display/input controls; do not split every visual box into a component or add list pagination by default. Stop polling/timers and remove listeners on teardown.
 
 ## Vue template, layout and style
+
+- **Dialog form isolation:** Start `new` with fresh defaults. Never bind an editable dialog form to `scope.row` or a row prop by reference: use `copyJSON(row)` when the row supplies mutable form data. Reading only `row.handle` to fetch a separate detail record needs no copy. Canceling edits must leave the list unchanged. Do not apply this rule to the search child's intentionally shared `searchForm`.
 
 - Write Vue 2 SFCs: template → script → optional scoped style. Use Options API sections as needed: `components`, `props`, `data()`, `computed`, `watch`, lifecycle hooks, `methods`. Use two spaces, single-quoted JS strings, usually no semicolons, one attribute per line for multi-attribute tags. Preserve project `.sync`, `slot="label"`, `v-slot:header` syntax; do not migrate to Vue 3.
 - Build layout rows and columns with `el-row` and `el-col`; use `gutter`, `span`, `justify` and alignment props instead of nested layout divs. Reserve `div` for a real purpose, e.g. the single `execution` root or a scroll viewport. On a list page put search → optional actions → table → right-aligned pagination in `basic-container`, with business dialogs outside it under the same root.
@@ -108,10 +114,35 @@ export default {
 </script>
 ```
 
-**CRUD actions — include only requested operations.** The add button goes above the table; the other four belong in its action column. Bind each required `v-if` directly on its `el-button`, never on the enclosing grid, column or slot. `canAdd`, `canEdit` and `canDelete` below represent confirmed permission predicates, not new permission keys. Apply the same placement to view or copy if their actual permissions differ.
+**CRUD permissions and actions.** Merge the following options into the page's existing `export default` and `created()`; do not create a second hook or replace its existing work. Declare each flag in `data()`, then read its matching key from the project's `permissions` getter in `created()`. These three keys belong to the example module: substitute only confirmed keys for the target and omit unused actions. Preserve the exact permission name even when it is not camelCase.
+
+```js
+import {mapGetters} from 'vuex'
+
+export default {
+  data() {
+    return {
+      z_nc_reason_type_add: false,
+      z_nc_reason_type_edit: false,
+      z_nc_reason_type_del: false
+    }
+  },
+  computed: {
+    ...mapGetters(['permissions'])
+  },
+  created() {
+    this.z_nc_reason_type_add = this.permissions['z_nc_reason_type_add']
+    this.z_nc_reason_type_edit = this.permissions['z_nc_reason_type_edit']
+    this.z_nc_reason_type_del = this.permissions['z_nc_reason_type_del']
+  }
+}
+```
+
+Put add above the table and row actions in its action column. Bind `v-if` directly on each gated `el-button`. Copy shares add permission only where confirmed; do not infer a permission for view.
 
 ```vue
-<el-button v-if="canAdd" type="primary" size="small" icon="el-icon-plus" @click="handleClick('new')">新增</el-button>
+<!-- 新增 -->
+<el-button v-if="z_nc_reason_type_add" type="primary" size="small" icon="el-icon-plus" @click="handleClick('new')">{{ $t('MES00001F') }}</el-button>
 ```
 
 ```vue
@@ -120,11 +151,11 @@ export default {
     <!-- 查看 -->
     <el-button type="warning" size="mini" icon="el-icon-view" circle @click="handleClick('view', scope.row)" />
     <!-- 修改 -->
-    <el-button v-if="canEdit" type="primary" size="mini" icon="el-icon-edit" circle @click="handleClick('edit', scope.row)" />
+    <el-button v-if="z_nc_reason_type_edit" type="primary" size="mini" icon="el-icon-edit" circle @click="handleClick('edit', scope.row)" />
     <!-- 複製 -->
-    <el-button v-if="canAdd" type="success" size="mini" icon="el-icon-document-copy" circle @click="handleClick('copy', scope.row)" />
+    <el-button v-if="z_nc_reason_type_add" type="success" size="mini" icon="el-icon-document-copy" circle @click="handleClick('copy', scope.row)" />
     <!-- 刪除 -->
-    <el-button v-if="canDelete" type="danger" size="mini" icon="el-icon-delete" circle @click="handleDel(scope.row)" />
+    <el-button v-if="z_nc_reason_type_del" type="danger" size="mini" icon="el-icon-delete" circle @click="handleDel(scope.row)" />
   </template>
 </el-table-column>
 ```
@@ -132,6 +163,8 @@ export default {
 **Single business dialog in `index.vue`:** use the direct `main` component name (`<main/>` shorthand), not a business-specific alias. Preserve the bindings needed by `dialog/main.vue` (`:visible.sync`, `:model`, `:type`, `@afterSave`). Check component resolution: lowercase `main` is a native HTML element in standard Vue 2; if so, import and register `Main` and write `<Main ... />` in the SFC so the dialog actually mounts. Only distinguish dialogs with descriptive aliases when there are two or more.
 
 **Report — a detail cell selects the parent row; a read-only dialog receives it.** In the table column's slot, use an existing text action rather than styling an ordinary cell as a link. On open, the detail component loads its own records.
+
+For conditional columns, derive the visible array in `computed` by filtering the `init.js` definitions. Do not mutate the imported array or duplicate the table markup. Static columns need no computed wrapper.
 
 ```vue
 <template v-slot="scope">
@@ -149,6 +182,8 @@ export default {
 
 **Workstation — keep scan input and feedback together.** Enter triggers the page's scan handler, not form submission. Substitute a verified target-project feedback component if one fits. Do not introduce polling or device integration unless required.
 
+When several paths restore scanner focus, share a `focus()` or `focus(key)` method that checks the target ref exists. Use `$nextTick` only if the input must render first. Clearing the scan value is a workflow decision, not a side effect of focusing.
+
 ```vue
 <el-row :gutter="15">
   <el-col :span="8">
@@ -163,6 +198,10 @@ export default {
 ```
 
 ## Naming and comments
+
+- For full CRUD pages, prefer this `methods` order: UI events → query/detail methods → pagination and helpers. Keep a short single-action flow (e.g. confirm, delete, refresh) in its handler; do not add pass-through methods or reorder an existing page during a minor adjustment.
+
+- Every i18n use in generated or edited code needs an adjacent **Traditional Chinese** comment giving its displayed meaning. In templates (including bound props) put `<!-- 新增 -->` immediately before the translated element as above, never inside its opening tag. In scripts use e.g. `const label = this.$t('MES00001F') // 新增`; in `init.js` annotate stored keys too, e.g. `{ prop: 'description', label: 'MES00048F' }, // 說明`. For a dynamic key, describe its role at the call site (e.g. `<!-- 依欄位設定顯示表頭 -->`) and annotate the individual keys where defined. Verify meanings against target-project translations; do not guess or edit locale files.
 
 - Use camelCase. UI events: `handleSearch`, `handleSave`, `handleDel`, `handleSelectionChange`; use `handleClick(type, row)` when actions open the same dialog in different modes. Page-level `getList()` builds a payload, calls API `fetchList(payload)` and updates the list. Use `getCurrent(row)` for details or meaningful workstation verbs such as `loadTask`.
 - Name helpers by effect (`showDialog`, `closeDialog`, `clearSelection`, `dataFormatter`), predicates by question (`isRowSelectable`), and state by role (`customerVisible`, `tableLoading`). Use computed properties for derived state, watchers for side effects such as loading on open. Match emitted and listened-to names exactly; do not reproduce incidental typos.

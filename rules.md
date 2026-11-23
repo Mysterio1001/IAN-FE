@@ -21,6 +21,10 @@
 
 ## 2. Template 骨架與元件選擇
 
+- 新增彈窗使用乾淨初值；用列表資料初始化可編輯表單時用 `copyJSON(row)`，不可直接綁定原列，取消後列表應維持原值。只讀 `row.handle` 載入明細不必複製，搜尋元件仍共用父頁的 `searchForm`。
+- 報表有條件顯示欄位時，在 `computed` 篩選 `init.js` 的欄位設定，不改原陣列、不複製整份表格；固定欄位不需要此步驟。
+- 作業站多處要回到掃碼欄時共用 `focus()` 或 `focus(key)`，先確認 ref 存在；只有要等欄位渲染才用 `$nextTick`，不要因聚焦而一律清空輸入。
+
 - 以安裝包 SKILL.md 的 `init.js`、`ui/search-ui.vue` 和五種操作按鈕模板為準。元件只使用對應模板內的參數，不因函式庫支援而追加。只有需求有列出的操作才生成。
 - `input-select-dialog` 全部放在根節點內最前面。新增／刪除／修改／複製／查看若受權限或其他條件控制，`v-if` 直接寫在各自的 `el-button`。
 - Vue SFC 除 import 外不在 `export default` 外宣告變數、函式等。單一主彈窗直接用 main（`<main/>`），不另取別名；標準 Vue 2 會將小寫 main 當原生元素，此時直接註冊並使用 `<Main />`，保留原有綁定。兩個以上的業務彈窗才依用途區分名稱。
@@ -35,6 +39,10 @@
 - CRUD 新增按鈕常用 `primary`、`small`；列操作用 `mini` 圓形圖示鈕。表單視窗用 `el-dialog`、`v-el-drag-dialog`、footer 按鈕，避免點遮罩或 Esc 誤關。作業站才視需求使用 `text-msg`、`traffic-signal`、`qr-code` 或 `Scanner`。生成前確認目標專案已註冊全域元件／指令，或依樣本 import 並在 `components` 註冊。
 
 ## 3. 函式與狀態命名
+
+**主規則（微調與完整頁面皆適用）：預設不新增布林變數。** 能由既有狀態判定就直接使用，例如已有 `type` 就判斷 `type === 'view'`，不另存 `isView` 或用 `watch` 同步。重複或複雜的條件才考慮唯讀 `computed`。只有可獨立變化的狀態（如同一模式內可開關的彈窗、請求進行中）或權限／元件模板要求，才保留對應旗標；不替它再取布林別名，也不硬把不同狀態合併。
+
+完整 CRUD 頁面的方法優先按「操作事件 → 查詢／明細 → 分頁與輔助方法」排列。單一按鈕的短流程可留在同一個 handler，不為分層多包一層，也不為微調重排原檔。
 
 | 責任 | 命名與呼叫方式 |
 | --- | --- |
@@ -57,6 +65,9 @@
 失敗時不要走成功分支或關閉待修正的表單。頁面級操作用 `showLoading()`／`hideLoading()`；明細表可用 `v-loading="tableLoading"`。用 `finally` 收回 loading。部分樣本有空 `catch`，不視為必要格式：先確認共用 request 是否已提示錯誤，避免重複彈窗，也避免無聲失敗。
 
 ## 5. Style 與註解
+
+- 按鈕權限採 skill 的 `created()` 模板：在 `data()` 宣告同名欄位並預設為 `false`，透過 `mapGetters(['permissions'])` 取得權限，在既有 `created()` 逐項指定，如 `this.z_nc_reason_type_add = this.permissions['z_nc_reason_type_add']`。`el-button` 直接以同名欄位作為 `v-if`；鍵名依目標模組確認。
+- 所有 i18n 使用處均加繁體中文註解，不限於不直觀的鍵。template 在元素前加 HTML 註解；JS、`init.js` 在使用處或設定列旁加 `//` 說明實際文案。動態鍵在呼叫處註明用途，在鍵值定義處逐項註明中文意義。
 
 - 預設不新增自訂 class。優先用元件屬性或適用的既有樣式，不用 inline style 規避限制。若設計需求確實無法滿足，新增的自訂 class（含 `:class` 與表格 callback 回傳值）一律用小駝峰，如 `resultViewport`，並限制於 scoped style。保留既有及框架 class 原名。交付前逐一核對新增 class 的必要性與命名。
 
